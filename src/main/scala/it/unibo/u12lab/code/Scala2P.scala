@@ -4,41 +4,49 @@ import alice.tuprolog.*
 
 object Scala2P:
 
-  def extractTerm(solveInfo:SolveInfo, i:Integer): Term =
+  def extractTerm(solveInfo: SolveInfo, i: Integer): Term =
     solveInfo.getSolution.asInstanceOf[Struct].getArg(i).getTerm
 
-  def extractTerm(solveInfo:SolveInfo, s:String): Term =
+  def extractTerm(solveInfo: SolveInfo, s: String): Term =
     solveInfo.getTerm(s)
 
   given Conversion[String, Term] = Term.createTerm(_)
-  given Conversion[Seq[_], Term] =  _.mkString("[",",","]")
-  given Conversion[String, Theory] = new Theory(_);
+  given Conversion[Seq[_], Term] = _.mkString("[", ",", "]")
+  given Conversion[String, Theory] = Theory.parseWithStandardOperators(_)
 
   def mkPrologEngine(theory: Theory): Term => LazyList[SolveInfo] =
     val engine = Prolog()
     engine.setTheory(theory)
 
-    goal => new Iterable[SolveInfo]{
+    goal =>
+      new Iterable[SolveInfo]:
 
-      override def iterator = new Iterator[SolveInfo]{
-        var solution: Option[SolveInfo] = Some(engine.solve(goal))
+        override def iterator = new Iterator[SolveInfo]:
+          var solution: Option[SolveInfo] = Some(engine.solve(goal))
 
-        override def hasNext = solution.isDefined &&
-                              (solution.get.isSuccess || solution.get.hasOpenAlternatives)
+          override def hasNext = solution.isDefined &&
+            (solution.get.isSuccess || solution.get.hasOpenAlternatives)
 
-        override def next() =
-          try solution.get
-          finally solution = if (solution.get.hasOpenAlternatives) Some(engine.solveNext()) else None
-      }
-    }.to(LazyList)
+          override def next() =
+            try solution.get
+            finally
+              solution =
+                if (solution.get.hasOpenAlternatives) Some(engine.solveNext())
+                else None
+      .to(LazyList)
 
+  def solveWithSuccess(
+      engine: Term => LazyList[SolveInfo],
+      goal: Term
+  ): Boolean =
+    engine(goal).map(_.isSuccess).headOption.contains(true)
 
-  def solveWithSuccess(engine: Term => LazyList[SolveInfo], goal: Term): Boolean =
-    engine(goal).map(_.isSuccess).headOption == Some(true)
-
-  def solveOneAndGetTerm(engine: Term => LazyList[SolveInfo], goal: Term, term: String): Term =
-    engine(goal).headOption.map(extractTerm(_,term)).get
-
+  def solveOneAndGetTerm(
+      engine: Term => LazyList[SolveInfo],
+      goal: Term,
+      term: String
+  ): Term =
+    engine(goal).headOption.map(extractTerm(_, term)).get
 
 object TryScala2P extends App:
   import Scala2P.{*, given}
@@ -53,6 +61,6 @@ object TryScala2P extends App:
   engine("permutation([1,2,3],L)") foreach (println(_))
   // permutation([1,2,3],[1,2,3]) ... permutation([1,2,3],[3,2,1])
 
-  val input = Struct("permutation",(1 to 20), Var())
-  engine(input) map (extractTerm(_,1)) take 100 foreach (println(_))
+  val input = Struct.of("permutation", (1 to 20), Var.anonymous())
+  engine(input) map (extractTerm(_, 1)) take 100 foreach (println(_))
   // [1,2,3,4,..,20] ... [1,2,..,15,20,16,18,19,17]
